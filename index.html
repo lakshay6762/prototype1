@@ -1,0 +1,71 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PersonaGuard</title>
+<style>
+:root{--bg:#eef1f4;--panel:#fff;--ink:#14202b;--mute:#5b6b7a;--line:#cfd7de;--sig:#0f766e;--warn:#b45309;--bad:#9f1239}
+:root[data-theme=dark]{--bg:#0e1419;--panel:#151d25;--ink:#e6edf3;--mute:#8b9bab;--line:#263340;--sig:#2dd4bf;--warn:#f59e0b;--bad:#fb7185}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+header{display:flex;gap:1rem;align-items:center;padding:.8rem 1.5rem;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font:600 1.15rem "IBM Plex Serif",Georgia,serif;margin:0 auto 0 0;letter-spacing:.02em}
+nav button,.btn{background:none;border:1px solid var(--line);color:var(--ink);padding:.45rem .9rem;border-radius:3px;cursor:pointer;font:inherit}
+nav button[aria-selected=true]{background:var(--ink);color:var(--bg)}.btn.p{background:var(--sig);border-color:var(--sig);color:#fff}
+:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+main{max-width:1060px;margin:0 auto;padding:1.5rem}section[hidden]{display:none}
+h2{font:600 2rem/1.2 "IBM Plex Serif",Georgia,serif;max-width:24ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+.box{background:var(--panel);border:1px solid var(--line);padding:1rem 1.2rem;border-radius:3px}
+textarea{width:100%;min-height:220px;background:var(--panel);color:var(--ink);border:1px solid var(--line);font:13px/1.4 ui-monospace,monospace;padding:.7rem}
+.bar{display:grid;grid-template-columns:150px 1fr 40px;gap:.6rem;align-items:center;margin:.4rem 0}.track{height:12px;background:var(--line)}.fill{height:100%;background:var(--sig)}
+.banner{border-left:4px solid var(--warn);padding:.6rem 1rem;background:var(--panel);margin:1rem 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem}td,th{border-bottom:1px solid var(--line);padding:.35rem .5rem;text-align:left}
+.na{color:var(--mute)}.cls{font:600 1.4rem "IBM Plex Serif",Georgia,serif}
+</style></head><body>
+<header><h1>PersonaGuard</h1>
+<nav role="tablist" aria-label="Sections"><button role="tab" aria-selected="true" data-t="home">Overview</button> <button role="tab" aria-selected="false" data-t="an">Analyze</button> <button role="tab" aria-selected="false" data-t="rs">Research</button></nav>
+<button class="btn" id="theme" aria-label="Toggle dark mode">Theme</button></header>
+<main>
+<section id="home"><h2>Risk signals for synthetic or highly automated accounts</h2>
+<p>PersonaGuard analyzes linguistic, behavioural and network signals to identify accounts exhibiting characteristics associated with synthetic or highly automated personas.</p>
+<div class="grid">
+<div class="box"><b>How it works</b><p>You supply account data. The server extracts text, similarity, timing, profile and graph features, then scores them with a trained model or, if none is installed, a labelled demo rule set.</p></div>
+<div class="box"><b>Detection signals</b><p>Sentence and phrase regularity, embedding similarity between posts, posting-interval regularity, burst and hour patterns, profile completeness, interaction-graph structure, and Isolation Forest anomaly distance.</p></div>
+<div class="box"><b>Limitations</b><p>Output is a probabilistic risk estimate, never proof that someone is fake. Regular schedulers, template users and generic bios are common among humans. Demo mode is unvalidated.</p></div>
+<div class="box"><b>Privacy</b><p>Submitted data is processed in memory and not stored by the server. History lives in this browser tab only; “Clear session” removes it. No logins or private platform access are requested; the tool never scrapes.</p></div></div></section>
+
+<section id="an" hidden><h2>Analyze an account</h2>
+<p>Paste account JSON, or upload JSON or a posts CSV (columns <code>text,timestamp</code>). Schema: <code>username, bio, created_at, followers, following, posts[{text,timestamp}], interactions[{source,target,timestamp}]</code>.</p>
+<textarea id="inp" aria-label="Account JSON" placeholder='{"username":"...","posts":[...]}'></textarea>
+<p><input type="file" id="file" accept=".json,.csv" aria-label="Upload JSON or CSV"> <button class="btn" id="sample">Load sample input</button> <button class="btn p" id="run">Analyze</button> <button class="btn" id="clear">Clear session</button></p>
+<div id="err" role="alert" class="banner" hidden></div><div id="out"></div><h3>Session history</h3><div id="hist" class="na">No analyses yet.</div></section>
+
+<section id="rs" hidden><h2>Research mode</h2>
+<p>Upload a labelled JSON list (each account has <code>label</code>: human, ai_assisted or synthetic). Accounts are split by account so none appears in both train and test. Results are measured on a held-out split of your data only.</p>
+<input type="file" id="rfile" accept=".json" aria-label="Labelled dataset"> <select id="rmodel" aria-label="Model"><option>logreg</option><option>random_forest</option><option>grad_boost</option><option>mlp</option></select>
+<button class="btn p" id="rabl">Run ablation</button> <button class="btn" id="rcmp">Compare models</button>
+<div id="rerr" role="alert" class="banner" hidden></div><div id="rout"></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);let hist=[];
+const root=document.documentElement;root.dataset.theme=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
+$('theme').onclick=()=>root.dataset.theme=root.dataset.theme=='dark'?'light':'dark';
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',x==b));['home','an','rs'].forEach(i=>$(i).hidden=i!=b.dataset.t)});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function csv(t){const L=t.trim().split(/\r?\n/),H=L[0].split(',').map(s=>s.trim());return {posts:L.slice(1).map(l=>{const m=l.match(/^(.*),([^,]*)$/);return H.join()=='text,timestamp'&&m?{text:m[1].replace(/^"|"$/g,''),timestamp:m[2].trim()}:null}).filter(Boolean)}}
+$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;const t=await f.text();$('inp').value=f.name.endsWith('.csv')?JSON.stringify(csv(t),null,1):t};
+$('sample').onclick=()=>{const t0=Date.parse('2026-01-01T09:00:00Z');$('inp').value=JSON.stringify({username:'dealbot88213',bio:'',followers:12,following:900,posts:Array.from({length:30},(_,i)=>({text:`Amazing deal #${i}! Check out our new product today and save big!`,timestamp:new Date(t0+i*3600e3).toISOString()}))},null,1)};
+function gauge(v){const a=Math.PI*(1-v/100),x=100+80*Math.cos(a),y=100-80*Math.sin(a);return `<svg viewBox="0 0 200 115" role="img" aria-label="Risk ${v} of 100"><path d="M20 100A80 80 0 0 1 180 100" fill="none" stroke="var(--line)" stroke-width="14"/><path d="M20 100A80 80 0 0 1 ${x} ${y}" fill="none" stroke="${v<35?'var(--sig)':v<60?'var(--warn)':'var(--bad)'}" stroke-width="14"/><text x="100" y="98" text-anchor="middle" font-size="30" fill="var(--ink)">${v}</text></svg>`}
+function render(r){const c=r.component_scores,names={linguistic:'Linguistic',behavioural:'Behavioural',profile:'Profile',network:'Network',content_similarity:'Content similarity',anomaly:'Anomaly'};
+const bars=Object.keys(names).map(k=>c[k]==null?`<div class="bar na"><span>${names[k]}</span><span>unavailable</span><span></span></div>`:`<div class="bar"><span>${names[k]}</span><div class="track"><div class="fill" style="width:${c[k]}%"></div></div><span>${c[k]}</span></div>`).join('');
+const sig=r.top_signals.length?r.top_signals.map(s=>`<li>${esc(s)}</li>`).join(''):'<li class="na">No individual signal crossed its threshold.</li>';
+return `<div class="grid"><div class="box">${r.risk_score==null?'<p class="na">No score.</p>':gauge(r.risk_score)}<div class="cls">${r.classification.replace(/_/g,' ')}</div><p>Confidence ${Math.round(r.confidence*100)}%<br><span class="na">Mode: ${r.status}</span></p></div><div class="box"><b>Component scores</b>${bars}</div></div>
+${r.status=='heuristic_demo'?'<div class="banner"><b>Demo mode.</b> No trained model is installed; scores come from fixed threshold rules and are not validated against labelled data.</div>':''}
+${r.note?`<div class="banner">${esc(r.note)}</div>`:''}${r.note_network?`<div class="banner">${esc(r.note_network)}</div>`:''}
+<div class="grid"><div class="box"><b>Evidence (measured)</b><ul>${sig}</ul></div><div class="box"><b>Model inference</b><p>This account exhibits ${r.classification=='INCONCLUSIVE'?'insufficient evidence for a reliable classification':'characteristics associated with '+r.classification.replace(/_/g,' ').toLowerCase()+' activity'}.</p></div><div class="box"><b>Uncertainty</b><p>${esc(r.limitations)}</p></div></div>`}
+$('run').onclick=async()=>{$('err').hidden=true;let d;try{d=JSON.parse($('inp').value)}catch(e){$('err').textContent='Input is not valid JSON.';$('err').hidden=false;return}
+$('run').disabled=true;$('out').textContent='Analyzing…';try{const R=await fetch('/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});if(!R.ok)throw new Error('Rejected: '+(await R.text()).slice(0,200));const r=await R.json();$('out').innerHTML=render(r);hist.unshift(`${esc(d.username||'(no username)')}: ${r.classification} / ${r.risk_score??'n/a'}`);$('hist').innerHTML=hist.map(h=>`<div>${h}</div>`).join('')}catch(e){$('out').textContent='';$('err').textContent=e.message;$('err').hidden=false}$('run').disabled=false};
+$('clear').onclick=()=>{hist=[];$('hist').textContent='No analyses yet.';$('out').innerHTML='';$('inp').value=''};
+async function research(path){$('rerr').hidden=true;const f=$('rfile').files[0];if(!f){$('rerr').textContent='Choose a labelled JSON file first.';$('rerr').hidden=false;return}
+$('rout').textContent='Running…';const R=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:await f.text()});if(!R.ok){$('rout').textContent='';$('rerr').textContent=(await R.json()).detail||'Failed';$('rerr').hidden=false;return}return R.json()}
+const f3=v=>v==null?'–':(+v).toFixed(3);
+$('rabl').onclick=async()=>{const d=await research('/research/ablation?model='+$('rmodel').value);if(d)$('rout').innerHTML=`<table><tr><th>Setup</th><th>Acc</th><th>Prec (macro)</th><th>Recall (macro)</th><th>F1</th><th>ROC-AUC</th></tr>${d.map(r=>r.error?`<tr><td>${r.setup}</td><td colspan=5 class="na">${esc(r.error)}</td></tr>`:`<tr><td>${r.setup}</td><td>${f3(r.accuracy)}</td><td>${f3(r.precision_macro)}</td><td>${f3(r.recall_macro)}</td><td>${f3(r.f1_macro)}</td><td>${f3(r.roc_auc)}</td></tr>`).join('')}</table>`};
+$('rcmp').onclick=async()=>{const d=await research('/research/compare');if(d)$('rout').innerHTML=Object.entries(d).map(([n,m])=>`<div class="box"><b>${n}</b> acc ${f3(m.accuracy)}, ROC-AUC ${f3(m.roc_auc)}, PR-AUC ${f3(m.pr_auc)}<table><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th></tr>${Object.entries(m.per_class).map(([c,v])=>`<tr><td>${c}</td><td>${f3(v.precision)}</td><td>${f3(v.recall)}</td><td>${f3(v.f1)}</td></tr>`).join('')}</table><pre>confusion ${JSON.stringify(m.classes)}\n${m.confusion_matrix.map(r=>r.join('\t')).join('\n')}</pre></div>`).join('')};
+</script></body></html>
